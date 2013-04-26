@@ -27,9 +27,9 @@ class OverloadedFunction(object):
     def addfunct(self, funct):
         self._functions.append(funct)
 
-    def bindto(self, instance):
-        for i in self._functions:
-            i.__self__ = instance
+    def __get__(self, instance, owner):
+        self.instance = instance
+        return self
 
     def _typematch(self, arguments, parameters):
         for name, param in parameters.items():
@@ -48,7 +48,7 @@ class OverloadedFunction(object):
         for funct in self._functions:
             signature = inspect.signature(funct)
             try:
-                bound = signature.bind(funct.__self__, *x, **y)
+                bound = signature.bind(self.instance, *x, **y)
             except TypeError:
                 continue
             if self._typematch(bound.arguments, signature.parameters):
@@ -103,7 +103,4 @@ class Overload(type):
         return super().__new__(cls, name, bases, dict(clsdict))
 
 class Overloaded(metaclass=Overload):
-    def __init__(self):
-        for var in dir(self):
-            if isinstance(getattr(self, var), OverloadedFunction):
-                getattr(self, var).bindto(self)
+    pass
