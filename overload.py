@@ -1,5 +1,5 @@
 import inspect
-from inspect import Parameter
+from inspect import Parameter, Signature
 import functools
 from collections import OrderedDict
 
@@ -28,7 +28,8 @@ class OverloadedFunction(object):
         self._functions.append(funct)
 
     def bindto(self, instance):
-        self.instance = instance
+        for i in self._functions:
+            i.__self__ = instance
 
     def _typematch(self, arguments, parameters):
         for name, param in parameters.items():
@@ -47,18 +48,21 @@ class OverloadedFunction(object):
         for funct in self._functions:
             signature = inspect.signature(funct)
             try:
-                bound = signature.bind(None, *x, **y)
+                bound = signature.bind(funct.__self__, *x, **y)
             except TypeError:
                 continue
             if self._typematch(bound.arguments, signature.parameters):
                 rtype = signature.return_annotation
                 rval = funct(*bound.args, **bound.kwargs)
-                if type(rtype) == type:
-                    if isinstance(rval, rtype):
-                        return rval
+                if rtype is not Signature.empty:
+                    if type(rtype) == type:
+                        if isinstance(rval, rtype):
+                            return rval
+                    else:
+                        if rtype(rval):
+                            return rval
                 else:
-                    if rtype(rval):
-                        return rval
+                    return rval
                 raise TypeError("Type returned by function does not pass type check.")
         raise TypeError("No defined function matches provided arguments.")
 
@@ -73,12 +77,15 @@ class OverloadedFunction(object):
 
 class OverloadedNamespace(OrderedDict):
     def __setitem__(self, name, value):
-        if name in self:
-            # Overload
-            super().__setitem__(name, OverloadedFunction(self[name]))
-            self[name].addfunct(value)
-        elif inspect.getfullargspec(value).annotations:
-            super().__setitem__(name, OverloadedFunction(value))
+        if callable(value):
+            if name in self:
+                # Overload
+                super().__setitem__(name, OverloadedFunction(self[name]))
+                self[name].addfunct(value)
+            elif inspect.getfullargspec(value).annotations:
+                super().__setitem__(name, OverloadedFunction(value))
+            else:
+                super().__setitem__(name, value)
         else:
             super().__setitem__(name, value)
 
@@ -96,4 +103,7 @@ class Overload(type):
         return super().__new__(cls, name, bases, dict(clsdict))
 
 class Overloaded(metaclass=Overload):
-    pass
+    def __init__(self):
+        for var in dir(self):
+            if isinstance(getattr(self, var), OverloadedFunction):
+                getattr(self, var).bindto(self)
