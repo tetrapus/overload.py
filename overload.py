@@ -77,6 +77,8 @@ class OverloadedNamespace(OrderedDict):
             # Overload
             super().__setitem__(name, OverloadedFunction(self[name]))
             self[name].addfunct(value)
+        elif inspect.getfullargspec(value).annotations:
+            super().__setitem__(name, OverloadedFunction(value))
         else:
             super().__setitem__(name, value)
 
